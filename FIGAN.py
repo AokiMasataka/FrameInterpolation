@@ -2,8 +2,7 @@ import numpy as np
 import torch
 from torch import nn
 from torch.utils.data import TensorDataset, DataLoader
-from torch.functional import F
-from torchvision import datasets, models, transforms
+from torchvision import models
 
 import convert
 

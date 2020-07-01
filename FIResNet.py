@@ -99,5 +99,9 @@ def train(x, y):
         if not (iterate + 1) % 10:
             print(iterate + 1, 'loss : ', loss)
 
-
-
+if __name__ == '__main__':
+    model = ResNet().cuda()
+    x, y = data
+    epochs = 8
+    for epoch in range(epochs):
+        train(x, y)
