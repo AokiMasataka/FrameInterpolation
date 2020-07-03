@@ -100,4 +100,49 @@ def train(x, y):
             print(iterate + 1, 'loss : ', loss)
 
 
+def eval(x, y, epoch):
+    model.eval()
 
+    tensor_x, tensor_y = torch.tensor(x), torch.tensor(y)
+    DS = TensorDataset(tensor_x, tensor_y)
+    loader = DataLoader(DS, batch_size=BATCH_SIZE, shuffle=False)
+
+    lossFunction = nn.MSELoss()
+
+    x = x * 255
+    Y = np.zeros((1, 3, 240, 240))
+
+    for iterate, (batch_x, batch_y) in enumerate(loader):
+        batch_x = batch_x.cuda()
+        batch_y = batch_y.cuda()
+
+        y = model(batch_x)
+        print(lossFunction(y, batch_y))
+
+        y = y.cpu().detach().numpy()
+        y = y * 255
+        Y = np.concatenate((Y, y), axis=0)
+
+    print(x.shape, Y[1:].shape)
+    convert.compareVideo('video/generate/Gen' + str(epoch), x, Y[1:])
+
+
+if __name__ == '__main__':
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = ResNet().to(device)
+    print('model deploy')
+
+    for epoch in range(EPOCHS):
+        for i in range(5):
+            print('epoch:' + str(epoch) + ' loading data')
+            x, y = np.load('ndarray/trainX' + str(i) + '.npy'), np.load('ndarray/trainY' + str(i) + '.npy')
+            print(x.shape, y.shape)
+            train(model, x, y)
+            del x, y
+
+        X = np.load('ndarray/testX.npy')
+        Y = np.load('ndarray/testY.npy')
+        eval(model, X[:240], Y[:240], epoch)
+        del X, Y
+
+        torch.save(model.state_dict(), 'models/SRNet' + str(epoch))

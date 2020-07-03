@@ -50,27 +50,25 @@ class ResBlock(nn.Module):
 class Generator(nn.Module):
     def __init__(self):
         super(Generator, self).__init__()
-        self.conv1 = nn.Conv2d(6, 96, kernel_size=9, padding=4)
-        self.bn1 = nn.BatchNorm2d(96)
+        self.conv1 = nn.Conv2d(6, 64, kernel_size=9, padding=4)
+        self.prelu = nn.PReLU()
 
-        self.block1 = ResBlock(96, 64)
-        self.block2 = ResBlock(64, 64)
-        self.block3 = ResBlock(64, 32)
-        self.block4 = ResBlock(32, 32)
-        self.block5 = ResBlock(32, 16)
+        self.ResBlocks = nn.Sequential(
+            ResBlock(64, 64),
+            ResBlock(64, 64),
+            ResBlock(64, 64),
+            ResBlock(64, 64),
+            ResBlock(64, 64),
+        )
 
-        self.conv2 = nn.Conv2d(16, 3, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(64, 3, kernel_size=3, padding=1)
         self.tanh = nn.Tanh()
 
     def forward(self, x):
         x = self.conv1(x)
-        x = self.bn1(x)
+        x = self.prelu(x)
 
-        x = self.block1(x)
-        x = self.block2(x)
-        x = self.block3(x)
-        x = self.block4(x)
-        x = self.block5(x)
+        x = self.ResBlocks(x) + x
 
         x = self.conv2(x)
         return self.tanh(x)
@@ -161,6 +159,33 @@ def train(x, y):
         G_optimizer.step()
 
 
+def eval(x, y, epoch):
+    G.eval()
+
+    tensor_x, tensor_y = torch.tensor(x), torch.tensor(y)
+    DS = TensorDataset(tensor_x, tensor_y)
+    loader = DataLoader(DS, batch_size=16, shuffle=False)
+
+    lossFunction = nn.MSELoss()
+
+    x = (x + 1) * 127.5
+    Y = np.zeros((1, 3, 240, 240))
+
+    for iterate, (batch_x, batch_y) in enumerate(loader):
+        batch_x = batch_x.cuda()
+        batch_y = batch_y.cuda()
+
+        y = G(batch_x)
+        print(lossFunction(y, batch_y))
+
+        y = y.cpu().detach().numpy()
+        y = (y + 1) * 127.5
+        Y = np.concatenate((Y, y), axis=0)
+
+    print(x.shape, Y[1:].shape)
+    convert.compareVideo('video/generate_GAN/Gen' + str(epoch), x, Y[1:])
+
+
 if __name__ == '__main__':
     torch.autograd.set_detect_anomaly(True)
     G = Generator()
@@ -178,8 +203,20 @@ if __name__ == '__main__':
     for epoch in range(EPOCHS):
         D_optimizer = torch.optim.Adam(D.parameters(), lr=DiscriminatorLR, betas=(0.9, 0.999))
         G_optimizer = torch.optim.Adam(G.parameters(), lr=GeneratorLR, betas=(0.9, 0.999))
-        
-        train(x, y)
+        for i in range(5):
+            print('epoch:' + str(epoch) + ' loading data : ', i)
+            x, y = np.load('ndarray/trainX' + str(i) + '.npy'), np.load('ndarray/trainY' + str(i) + '.npy')
+            x = x[:, :, :160, :160] * 2 - 1
+            y = y[:, :, :160, :160] * 2 - 1
+            train(x, y)
+            del x, y
 
-        GeneratorLR *= 0.75
+        X = np.load('ndarray/testX.npy')
+        Y = np.load('ndarray/testY.npy')
+        eval(X[:200] * 2 - 1, Y[:200] * 2 - 1, epoch)
+        del X, Y
+        torch.save(G.state_dict(), 'GAN_models/Generator_Gen' + str(epoch))
+        torch.save(D.state_dict(), 'GAN_models/Discriminator_Gen' + str(epoch))
+
+        GeneratorLR *= 0.8
         DiscriminatorLR *= 0.95
